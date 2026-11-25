@@ -14,34 +14,34 @@
 <style>
   /* 布局：单屏抽卡台。顶部一行卡名，中间一张书签比例的卡（身后叠着牌堆），底部一个按钮和剩余张数 */
   :root {
-    --bg: #eff2f4;
-    --paper: #fcfcfb;
-    --ink: #26313b;
-    --muted: #7d8994;
-    --accent: #2c5ea6;
-    --accent-soft: #e4ecf7;
-    --line: #dce2e7;
-    --shadow: rgba(32, 52, 82, .22);
+    --bg: #f8eff2;
+    --paper: #fffbfc;
+    --ink: #3b2a31;
+    --muted: #9c8790;
+    --accent: #c2577a;
+    --accent-soft: #fbe5ec;
+    --line: #eedce2;
+    --shadow: rgba(122, 52, 78, .2);
     --serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
     --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
-    --w: min(76vw, 300px, calc((100vh - 290px) * .625));
+    --w: min(76vw, 300px, calc((100vh - 250px) * .625));
   }
   /* iPhone Safari 的 100vh 会把工具栏后面的区域也算进去，卡片会偏大、压住底部按钮；改用可见区域高度 svh */
   @supports (height: 100svh) {
     :root {
-      --w: min(76vw, 300px, calc((100svh - 300px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * .625));
+      --w: min(76vw, 300px, calc((100svh - 215px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * .625));
     }
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #11161c; --paper: #1a2129; --ink: #e2e7eb; --muted: #8592a0;
-      --accent: #92b5e6; --accent-soft: #1d2a3b; --line: #2a333e; --shadow: rgba(0, 0, 0, .5);
+      --bg: #1a1216; --paper: #261a20; --ink: #f1e4e9; --muted: #a8939c;
+      --accent: #f1a5be; --accent-soft: #3a222c; --line: #3a2a31; --shadow: rgba(0, 0, 0, .5);
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #11161c; --paper: #1a2129; --ink: #e2e7eb; --muted: #8592a0;
-    --accent: #92b5e6; --accent-soft: #1d2a3b; --line: #2a333e; --shadow: rgba(0, 0, 0, .5);
+    --bg: #1a1216; --paper: #261a20; --ink: #f1e4e9; --muted: #a8939c;
+    --accent: #f1a5be; --accent-soft: #3a222c; --line: #3a2a31; --shadow: rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
 
@@ -204,13 +204,41 @@
   }
   .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .btn:active { transform: scale(.98); }
-  .count { margin: 0; font-size: 12px; color: var(--muted); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
-  .tools { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; min-height: 24px; }
-  .tools[hidden], .link[hidden] { display: none !important; }
+  .count {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    gap: 0 10px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .08em;
+    font-variant-numeric: tabular-nums;
+  }
+  .link[hidden], .skip[hidden] { display: none !important; }
+  .slot { position: relative; }
+  .skip {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    z-index: 3;
+    border: 0;
+    background: none;
+    padding: 8px 10px;
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--line);
+    cursor: pointer;
+  }
+  .skip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
   .link {
     border: 0;
     background: none;
-    padding: 4px 2px;
+    padding: 0 2px;
     font-size: 12px;
     letter-spacing: .08em;
     color: var(--muted);
@@ -250,7 +278,7 @@
           <div class="q" id="q" hidden>
             <div class="tag"><span>问</span><span id="noFront"></span></div>
             <div class="text" id="qText"></div>
-            <div class="hint">想好了，点卡片翻面</div>
+            <div class="hint">点卡片翻面</div>
           </div>
         </div>
         <div class="face back">
@@ -260,16 +288,13 @@
           <div class="hint">点一下翻回去</div>
         </div>
       </button>
+      <button class="skip" id="skip" type="button" hidden>不想再抽到</button>
     </div>
   </main>
 
   <footer>
     <button class="btn" id="next" type="button">抽一张</button>
-    <p class="count"><span id="count"></span> <button class="link accent" id="undo" type="button" hidden>撤销</button></p>
-    <div class="tools" id="tools">
-      <button class="link" id="skip" type="button" hidden>不想再抽到这张</button>
-      <button class="link" id="restore" type="button" hidden></button>
-    </div>
+    <p class="count"><span id="count"></span><button class="link accent" id="undo" type="button" hidden>撤销</button><button class="link" id="restore" type="button" hidden></button></p>
   </footer>
   <p class="sr" id="live" aria-live="polite"></p>
 </div>
@@ -427,7 +452,7 @@
     undoBtn.hidden = undoId === null;
     skipBtn.hidden = state === "cover";
     restoreBtn.hidden = hiddenIds.size === 0;
-    if (!restoreArmed) restoreBtn.textContent = "已移出 " + hiddenIds.size + " 张 · 全部恢复";
+    if (!restoreArmed) restoreBtn.textContent = "恢复已移出的 " + hiddenIds.size + " 张";
     if (state === "cover") card.setAttribute("aria-label", "牌堆，点一下抽一张");
     else if (state === "q") card.setAttribute("aria-label", "问：" + $("qText").textContent + "。点一下翻面");
     else card.setAttribute("aria-label", "带走：" + $("aText").textContent + "。点一下翻回去");
@@ -497,7 +522,7 @@
     deck = deck.filter((x) => x !== id);
     save();
     undoId = id;
-    draw("已移出这张，以后不会再抽到", true);
+    draw("已移出，不会再抽到", true);
   }
 
   function undo() {
@@ -514,7 +539,7 @@
   function restoreAll() {
     if (!restoreArmed) {
       restoreArmed = true;
-      restoreBtn.textContent = "再点一次，恢复全部 " + hiddenIds.size + " 张";
+      restoreBtn.textContent = "再点一次确认恢复";
       clearTimeout(restoreTimer);
       restoreTimer = setTimeout(() => { restoreArmed = false; updateUI(); }, 4000);
       return;
