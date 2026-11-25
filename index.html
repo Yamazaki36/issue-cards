@@ -11,9 +11,6 @@
   [hidden] { display: none !important; }
 </style>
 <title>课题分离卡</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&display=swap">
 <style>
   /* 布局：单屏抽卡台。顶部一行卡名，中间一张书签比例的卡（身后叠着牌堆），底部一个按钮和剩余张数 */
   :root {
@@ -25,7 +22,7 @@
     --accent-soft: #e4ecf7;
     --line: #dce2e7;
     --shadow: rgba(32, 52, 82, .22);
-    --serif: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+    --serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
     --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
     --w: min(76vw, 300px, calc((100vh - 250px) * .625));
   }
@@ -114,6 +111,7 @@
     transform-style: preserve-3d;
     transition: transform .7s cubic-bezier(.2, .7, .2, 1);
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
   .card.flipped { transform: rotateY(180deg); }
   .card.instant { transition: none; }
