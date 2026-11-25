@@ -51,6 +51,7 @@
 
   .app {
     box-sizing: border-box;
+    overflow-x: hidden;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -239,7 +240,15 @@
     font-variant-numeric: tabular-nums;
   }
   .link[hidden], .skip[hidden] { display: none !important; }
-  .slot { position: relative; }
+  .slot { position: relative; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+  .slot.dragging { transition: none; }
+  .slot.snap { transition: transform .22s ease; }
+  .slot.out-left { opacity: 0; transform: translateX(-70%) rotate(-7deg); transition: opacity .24s ease, transform .24s ease; }
+  .slot.out-right { opacity: 0; transform: translateX(70%) rotate(7deg); transition: opacity .24s ease, transform .24s ease; }
+  .slot.in-right { animation: inRight .38s cubic-bezier(.2, .7, .2, 1); }
+  .slot.in-left { animation: inLeft .38s cubic-bezier(.2, .7, .2, 1); }
+  @keyframes inRight { from { opacity: 0; transform: translateX(45%) rotate(5deg); } to { opacity: 1; transform: none; } }
+  @keyframes inLeft { from { opacity: 0; transform: translateX(-45%) rotate(-5deg); } to { opacity: 1; transform: none; } }
   .skip {
     position: absolute;
     right: 14px;
@@ -276,7 +285,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .card, .slot.out { transition: none; }
-    .slot.deal { animation: none; }
+    .slot.deal, .slot.in-left, .slot.in-right { animation: none; }
+    .slot.out-left, .slot.out-right, .slot.snap { transition: none; }
   }
 </style>
 </head>
@@ -549,8 +559,12 @@
 
   function updateUI() {
     const g = groupOf(cur);
-    btn.textContent = state === "cover" ? "抽一张" : "再抽一张";
-    count.textContent = note || ("这一轮还剩 " + deck().length + " 张");
+    const h = H();
+    const back = state !== "cover" && h.pos < h.list.length - 1;
+    btn.textContent = state === "cover" ? "抽一张" : back ? "下一张" : "再抽一张";
+    count.textContent = note || (back
+      ? "往回翻了 " + (h.list.length - 1 - h.pos) + " 张，左滑往后看"
+      : "这一轮还剩 " + deck().length + " 张");
     pile.hidden = deck().length === 0;
     undoBtn.hidden = undoId === null;
     skipBtn.hidden = state !== "a";
@@ -577,10 +591,48 @@
     live.textContent = "已切换到" + groupOf(k).name;
   }
 
-  function draw(msg, keepUndo) {
+  // 每副牌这次打开后抽过的卡，按顺序记下来，用来左右翻（不存到手机里）
+  const hist = {};
+  GROUPS.forEach((g) => { hist[g.key] = { list: [], pos: -1 }; });
+  function H() { return hist[cur]; }
+
+  function present(id, dir) {
+    const fromCover = state === "cover";
+    busy = true;
+    const go = () => {
+      card.classList.add("instant");
+      card.classList.remove("flipped");
+      void card.offsetWidth;
+      card.classList.remove("instant");
+      fill(id);
+      current = id;
+      state = "q";
+      slot.classList.remove("out", "out-left", "out-right", "deal", "in-left", "in-right", "snap");
+      slot.style.transform = "";
+      void slot.offsetWidth;
+      if (!reduce) slot.classList.add(fromCover ? "deal" : dir === "prev" ? "in-left" : "in-right");
+      updateUI();
+      live.textContent = "问：" + CARDS[id][0];
+      busy = false;
+    };
+    slot.classList.remove("dragging", "snap");
+    slot.style.transform = "";
+    if (reduce) { go(); return; }
+    slot.classList.add(fromCover ? "out" : dir === "prev" ? "out-right" : "out-left");
+    setTimeout(go, fromCover ? 220 : 240);
+  }
+
+  // 下一张：往回翻过的先按顺序翻回来，翻到头了再抽新的
+  function next(msg, keepUndo) {
     if (busy) return;
     note = msg || "";
     if (!keepUndo) undoId = null;
+    const h = H();
+    if (state !== "cover" && h.pos < h.list.length - 1) {
+      h.pos++;
+      present(h.list[h.pos], "next");
+      return;
+    }
     if (deck().length === 0) {
       const pool = available(groupOf(cur));
       if (pool.length === 0) {
@@ -594,27 +646,35 @@
     }
     const id = deck().pop();
     save();
-    busy = true;
-    const go = () => {
-      card.classList.add("instant");
-      card.classList.remove("flipped");
-      void card.offsetWidth;
-      card.classList.remove("instant");
-      fill(id);
-      current = id;
-      state = "q";
-      slot.classList.remove("out", "deal");
-      void slot.offsetWidth;
-      if (!reduce) slot.classList.add("deal");
+    h.list.push(id);
+    h.pos = h.list.length - 1;
+    present(id, "next");
+  }
+  const draw = next;
+
+  function prev() {
+    if (busy) return;
+    const h = H();
+    if (state === "cover") {
+      if (h.list.length === 0) { note = "还没抽过卡，左滑抽一张"; updateUI(); snapBack(); return; }
+    } else if (h.pos > 0) {
+      h.pos--;
+    } else {
+      note = "已经是这次抽的第一张了";
       updateUI();
-      live.textContent = "问：" + CARDS[id][0];
-      busy = false;
-    };
-    if (reduce) go();
-    else {
-      slot.classList.add("out");
-      setTimeout(go, state === "cover" ? 220 : 260);
+      snapBack();
+      return;
     }
+    note = "";
+    undoId = null;
+    present(h.list[h.pos], "prev");
+  }
+
+  function snapBack() {
+    if (reduce) { slot.style.transform = ""; return; }
+    slot.classList.add("snap");
+    slot.style.transform = "";
+    setTimeout(() => slot.classList.remove("snap"), 240);
   }
 
   function flip() {
@@ -639,7 +699,12 @@
     removeEverywhere(id);
     save();
     undoId = id;
-    draw("已移出，不会再抽到", true);
+    GROUPS.forEach((g) => {
+      const h = hist[g.key];
+      const i = h.list.indexOf(id);
+      if (i >= 0) { h.list.splice(i, 1); if (h.pos >= i) h.pos--; }
+    });
+    next("已移出，不会再抽到", true);
   }
 
   function undo() {
@@ -673,8 +738,49 @@
     updateUI();
   }
 
-  card.addEventListener("click", () => (state === "cover" ? draw() : flip()));
-  btn.addEventListener("click", () => draw());
+  // 左右滑：左滑下一张，右滑上一张；卡片跟着手指走
+  let sx = 0, sy = 0, dx = 0, pid = null, tracking = false, dragging = false, suppressClick = false;
+  slot.addEventListener("pointerdown", (e) => {
+    if (busy || (e.pointerType === "mouse" && e.button !== 0) || e.target.closest(".skip")) return;
+    tracking = true; dragging = false; sx = e.clientX; sy = e.clientY; dx = 0; pid = e.pointerId;
+  });
+  slot.addEventListener("pointermove", (e) => {
+    if (!tracking || e.pointerId !== pid) return;
+    dx = e.clientX - sx;
+    const dy = e.clientY - sy;
+    if (!dragging) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        dragging = true;
+        slot.classList.add("dragging");
+        try { slot.setPointerCapture(pid); } catch (err) {}
+      } else if (Math.abs(dy) > 12) { tracking = false; return; }
+    }
+    if (dragging && !reduce) slot.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 25) + "deg)";
+  });
+  function endDrag(e, cancelled) {
+    if (!tracking || e.pointerId !== pid) return;
+    tracking = false;
+    if (!dragging) return;
+    dragging = false;
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 350);
+    slot.classList.remove("dragging");
+    if (!cancelled && dx < -60) next();
+    else if (!cancelled && dx > 60) prev();
+    else snapBack();
+  }
+  slot.addEventListener("pointerup", (e) => endDrag(e, false));
+  slot.addEventListener("pointercancel", (e) => endDrag(e, true));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") next();
+    else if (e.key === "ArrowLeft") prev();
+  });
+
+  card.addEventListener("click", () => {
+    if (suppressClick) return;
+    if (state === "cover") next(); else flip();
+  });
+  btn.addEventListener("click", () => next());
   skipBtn.addEventListener("click", skip);
   undoBtn.addEventListener("click", undo);
   restoreBtn.addEventListener("click", restoreAll);
