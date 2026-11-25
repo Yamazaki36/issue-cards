@@ -45,13 +45,13 @@
     color-scheme: dark;
   }
 
-  html, body { height: 100%; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   body { background: var(--bg); color: var(--ink); font-family: var(--sans); }
   button { font: inherit; color: inherit; }
 
   .app {
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow: hidden;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -240,7 +240,7 @@
     font-variant-numeric: tabular-nums;
   }
   .link[hidden], .skip[hidden] { display: none !important; }
-  .slot { position: relative; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+  .slot { position: relative; touch-action: none; -webkit-user-select: none; user-select: none; }
   .slot.dragging { transition: none; }
   .slot.snap { transition: transform .22s ease; }
   .slot.out-left { opacity: 0; transform: translateX(-70%) rotate(-7deg); transition: opacity .24s ease, transform .24s ease; }
@@ -769,6 +769,7 @@
     else if (!cancelled && dx > 60) prev();
     else snapBack();
   }
+  slot.addEventListener("touchmove", (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
   slot.addEventListener("pointerup", (e) => endDrag(e, false));
   slot.addEventListener("pointercancel", (e) => endDrag(e, true));
   document.addEventListener("keydown", (e) => {
