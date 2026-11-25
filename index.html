@@ -157,6 +157,9 @@
   }
   .back .text { color: var(--accent); font-weight: 400; }
 
+  .src { font-size: 12px; letter-spacing: .12em; color: var(--accent); opacity: .8; padding-bottom: 12px; }
+  .src::before { content: "—— "; }
+  .src[hidden] { display: none !important; }
   .hint { font-size: 12px; letter-spacing: .1em; color: var(--muted); }
 
   /* 牌背：竖排的一句话，像书签 */
@@ -231,6 +234,7 @@
         <div class="face back">
           <div class="tag"><span>带走</span><span id="noBack"></span></div>
           <div class="text" id="aText"></div>
+          <div class="src" id="src" hidden></div>
           <div class="hint">点一下翻回去</div>
         </div>
       </button>
@@ -275,10 +279,20 @@
     ["如果对方永远不理解我，我还要继续解释吗？", "被理解是礼物，不是我必须拿到的东西。"],
     ["我替别人着急，对方自己急吗？", "别人的人生，我不替他焦虑。"],
     ["我在讨好的那个人，真的在乎我做了什么吗？", "讨好换不来尊重，只会换来更多期待。"],
-    ["今天，我替谁做了题？", "把别人的题还回去，我才有力气写自己的。"]
+    ["今天，我替谁做了题？", "把别人的题还回去，我才有力气写自己的。"],
+    ["这件事里，哪些在我手里，哪些不在？", "在我手里的，我尽力。不在的，我放手。", "爱比克泰德 · 控制二分法"],
+    ["让我难受的，是这件事本身，还是我对它下的判断？", "扰乱我的，往往不是事情，是我给事情下的判断。", "爱比克泰德"],
+    ["我已经中了一箭，还要自己再补第二箭吗？", "第一箭是发生的事，第二箭是我一遍遍的回想。", "佛经 · 箭喻"],
+    ["我确定我知道对方心里在想什么吗？", "我不是鱼，也不是他。猜来的心思，不能当成事实。", "庄子 · 濠梁之辩"],
+    ["如果这样的日子要重过一万遍，我还愿意吗？", "选一种我愿意一遍遍重来的活法。", "尼采 · 永恒轮回"],
+    ["石头推上去还会滚下来，我还能在里面找到自己的意思吗？", "意义不在山顶，在我推石头的那双手里。", "加缪 · 西西弗斯"],
+    ["我说“我没得选”，是真的没有，还是不想为选择负责？", "不选也是一种选。我一直在为自己的人生作答。", "萨特 · 人注定是自由的"],
+    ["今天的我，和昨天为这件事难过的我，还是同一个人吗？", "人不能两次踏进同一条河。我在变，事也在变。", "赫拉克利特"],
+    ["我想看懂别人，那我看懂自己了吗？", "知人者智，自知者明。", "老子 · 道德经"],
+    ["我担心的事，有多少真的发生了，有多少只发生在我脑子里？", "人在想象里受的苦，比在现实里多。", "塞涅卡"]
   ];
 
-  const KEY = "issue-cards-deck-v1";
+  const KEY = "issue-cards-deck-v2";
   const $ = (id) => document.getElementById(id);
   const card = $("card"), slot = $("slot"), pile = $("pile"), btn = $("next"), count = $("count"), live = $("live");
   const cover = $("cover"), q = $("q");
@@ -308,7 +322,9 @@
   let note = "";
 
   function fill(id) {
-    const [qs, as] = CARDS[id];
+    const [qs, as, src] = CARDS[id];
+    $("src").textContent = src || "";
+    $("src").hidden = !src;
     const no = "No." + String(id + 1).padStart(2, "0");
     $("qText").textContent = qs;
     $("aText").textContent = as;
@@ -332,7 +348,7 @@
     note = "";
     if (deck.length === 0) {
       deck = shuffle(CARDS.length);
-      note = "30 张都抽完了，已经重新洗牌";
+      note = CARDS.length + " 张都抽完了，已经重新洗牌";
     }
     const id = deck.pop();
     save();
