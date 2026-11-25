@@ -71,7 +71,19 @@
     padding-left: .32em;
     color: var(--accent);
   }
-  .sub { margin: 0; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+  .tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 2px; }
+  .tab {
+    border: 0;
+    background: none;
+    padding: 3px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    letter-spacing: .16em;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tab[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .stage {
     flex: 1;
@@ -273,7 +285,7 @@
 <div class="app">
   <header>
     <h1>课题分离卡</h1>
-    <p class="sub">抽一张 · 想一想 · 翻过来带走一句</p>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="选择牌堆"></nav>
   </header>
 
   <main class="stage">
@@ -283,7 +295,7 @@
         <div class="face front">
           <div class="cover" id="cover">
             <div class="cover-title">这是谁的课题</div>
-            <div class="cover-foot">点一下抽卡</div>
+            <div class="cover-foot" id="coverFoot">点一下抽卡</div>
           </div>
           <div class="q" id="q" hidden>
             <div class="tag"><span>问</span><span id="noFront"></span></div>
@@ -415,14 +427,24 @@
   ];
 
   // 卡片编号就是数组下标：以后加卡只能往末尾追加，不要删改顺序，否则"不想再抽到"的记录会对错卡
-  const KEY = "issue-cards-deck-v4";
+  // 新加的卡，记得把编号区间加进下面对应的组（区间左闭右开，从 0 开始数）
+  const GROUPS = [
+    { key: "all", name: "全部" },
+    { key: "issue", name: "课题", ranges: [[0, 30]] },
+    { key: "phil", name: "哲学", ranges: [[30, 40]] },
+    { key: "motto", name: "箴言", ranges: [[40, 100]] }
+  ];
+  const DECKS_KEY = "issue-cards-decks-v5";
   const HIDDEN_KEY = "issue-cards-hidden-v1";
+  const GROUP_KEY = "issue-cards-group-v1";
   const $ = (id) => document.getElementById(id);
   const card = $("card"), slot = $("slot"), pile = $("pile"), btn = $("next"), count = $("count"), live = $("live");
-  const cover = $("cover"), q = $("q");
+  const cover = $("cover"), q = $("q"), tabs = $("tabs");
   const skipBtn = $("skip"), undoBtn = $("undo"), restoreBtn = $("restore");
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const isId = (x) => Number.isInteger(x) && x >= 0 && x < CARDS.length;
+  const inGroup = (g, id) => !g.ranges || g.ranges.some(([a, b]) => id >= a && id < b);
+  const groupOf = (k) => GROUPS.find((g) => g.key === k) || GROUPS[0];
 
   function shuffle(arr) {
     const a = arr.slice();
@@ -439,19 +461,43 @@
     if (Array.isArray(h)) hiddenIds = new Set(h.filter(isId));
   } catch (e) {}
 
-  const available = () => CARDS.map((_, i) => i).filter((i) => !hiddenIds.has(i));
-  const insertRandom = (id) => deck.splice(Math.floor(Math.random() * (deck.length + 1)), 0, id);
+  const available = (g) => CARDS.map((_, i) => i).filter((i) => inGroup(g, i) && !hiddenIds.has(i));
 
-  let deck = null;
-  try { deck = JSON.parse(localStorage.getItem(KEY)); } catch (e) { deck = null; }
-  if (Array.isArray(deck)) deck = deck.filter((x) => isId(x) && !hiddenIds.has(x));
-  if (!Array.isArray(deck) || deck.length === 0) deck = shuffle(available());
+  // 每副牌各自记进度
+  let decks = {};
+  try {
+    const d = JSON.parse(localStorage.getItem(DECKS_KEY));
+    if (d && typeof d === "object") decks = d;
+  } catch (e) {}
+  GROUPS.forEach((g) => {
+    let d = Array.isArray(decks[g.key])
+      ? decks[g.key].filter((x) => isId(x) && inGroup(g, x) && !hiddenIds.has(x))
+      : [];
+    if (d.length === 0) d = shuffle(available(g));
+    decks[g.key] = d;
+  });
 
+  let cur = "all";
+  try {
+    const k = localStorage.getItem(GROUP_KEY);
+    if (GROUPS.some((g) => g.key === k)) cur = k;
+  } catch (e) {}
+
+  const deck = () => decks[cur];
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(deck)); } catch (e) {}
+    try { localStorage.setItem(DECKS_KEY, JSON.stringify(decks)); } catch (e) {}
   }
   function saveHidden() {
     try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hiddenIds])); } catch (e) {}
+  }
+  function insertRandom(id) {
+    GROUPS.forEach((g) => {
+      const d = decks[g.key];
+      if (inGroup(g, id) && !d.includes(id)) d.splice(Math.floor(Math.random() * (d.length + 1)), 0, id);
+    });
+  }
+  function removeEverywhere(id) {
+    GROUPS.forEach((g) => { decks[g.key] = decks[g.key].filter((x) => x !== id); });
   }
 
   let state = "cover";
@@ -462,13 +508,25 @@
   let restoreArmed = false;
   let restoreTimer = null;
 
+  // 顶部切换
+  GROUPS.forEach((g) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tab";
+    b.id = "tab-" + g.key;
+    b.setAttribute("role", "tab");
+    b.textContent = g.name;
+    b.addEventListener("click", () => switchGroup(g.key));
+    tabs.appendChild(b);
+  });
+
   function fill(id) {
-    const [qs, as, src, note] = CARDS[id];
-    $("note").textContent = note || "";
-    $("note").hidden = !note;
-    document.querySelector(".back").classList.toggle("has-note", !!note);
+    const [qs, as, src, nt] = CARDS[id];
     $("src").textContent = src || "";
     $("src").hidden = !src;
+    $("note").textContent = nt || "";
+    $("note").hidden = !nt;
+    document.querySelector(".back").classList.toggle("has-note", !!nt);
     const no = "No." + String(id + 1).padStart(2, "0");
     $("qText").textContent = qs;
     $("aText").textContent = as;
@@ -490,34 +548,51 @@
   }
 
   function updateUI() {
+    const g = groupOf(cur);
     btn.textContent = state === "cover" ? "抽一张" : "再抽一张";
-    count.textContent = note || ("这一轮还剩 " + deck.length + " 张");
-    pile.hidden = deck.length === 0;
+    count.textContent = note || ("这一轮还剩 " + deck().length + " 张");
+    pile.hidden = deck().length === 0;
     undoBtn.hidden = undoId === null;
     skipBtn.hidden = state !== "a";
     restoreBtn.hidden = hiddenIds.size === 0;
     if (!restoreArmed) restoreBtn.textContent = "恢复已移出的 " + hiddenIds.size + " 张";
-    if (state === "cover") card.setAttribute("aria-label", "牌堆，点一下抽一张");
+    $("coverFoot").textContent = g.key === "all" ? "点一下抽卡" : g.name + " · 点一下抽卡";
+    GROUPS.forEach((x) => $("tab-" + x.key).setAttribute("aria-selected", String(x.key === cur)));
+    if (state === "cover") card.setAttribute("aria-label", g.name + "牌堆，点一下抽一张");
     else if (state === "q") card.setAttribute("aria-label", "问：" + $("qText").textContent + "。点一下翻面");
     else card.setAttribute("aria-label", "带走：" + $("aText").textContent + "。点一下翻回去");
+  }
+
+  function switchGroup(k) {
+    if (busy || k === cur) return;
+    cur = k;
+    try { localStorage.setItem(GROUP_KEY, k); } catch (e) {}
+    undoId = null;
+    note = "";
+    showCover();
+    slot.classList.remove("out", "deal");
+    void slot.offsetWidth;
+    if (!reduce) slot.classList.add("deal");
+    updateUI();
+    live.textContent = "已切换到" + groupOf(k).name;
   }
 
   function draw(msg, keepUndo) {
     if (busy) return;
     note = msg || "";
     if (!keepUndo) undoId = null;
-    if (deck.length === 0) {
-      const pool = available();
+    if (deck().length === 0) {
+      const pool = available(groupOf(cur));
       if (pool.length === 0) {
         showCover();
-        note = "所有的卡都被移出了，点下面恢复";
+        note = "这副牌都被移出了，点旁边恢复";
         updateUI();
         return;
       }
-      deck = shuffle(pool);
+      decks[cur] = shuffle(pool);
       if (!msg) note = pool.length + " 张都抽完了，已经重新洗牌";
     }
-    const id = deck.pop();
+    const id = deck().pop();
     save();
     busy = true;
     const go = () => {
@@ -535,12 +610,10 @@
       live.textContent = "问：" + CARDS[id][0];
       busy = false;
     };
-    if (reduce || state === "cover") {
-      if (state === "cover" && !reduce) { slot.classList.add("out"); setTimeout(go, 220); }
-      else go();
-    } else {
+    if (reduce) go();
+    else {
       slot.classList.add("out");
-      setTimeout(go, 260);
+      setTimeout(go, state === "cover" ? 220 : 260);
     }
   }
 
@@ -563,7 +636,7 @@
     const id = current;
     hiddenIds.add(id);
     saveHidden();
-    deck = deck.filter((x) => x !== id);
+    removeEverywhere(id);
     save();
     undoId = id;
     draw("已移出，不会再抽到", true);
