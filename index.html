@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="课题分离卡">
+<style>
+  :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+<title>课题分离卡</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&display=swap">
+<style>
+  /* 布局：单屏抽卡台。顶部一行卡名，中间一张书签比例的卡（身后叠着牌堆），底部一个按钮和剩余张数 */
+  :root {
+    --bg: #eff2f4;
+    --paper: #fcfcfb;
+    --ink: #26313b;
+    --muted: #7d8994;
+    --accent: #2c5ea6;
+    --accent-soft: #e4ecf7;
+    --line: #dce2e7;
+    --shadow: rgba(32, 52, 82, .22);
+    --serif: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+    --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    --w: min(76vw, 300px, calc((100vh - 250px) * .625));
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11161c; --paper: #1a2129; --ink: #e2e7eb; --muted: #8592a0;
+      --accent: #92b5e6; --accent-soft: #1d2a3b; --line: #2a333e; --shadow: rgba(0, 0, 0, .5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11161c; --paper: #1a2129; --ink: #e2e7eb; --muted: #8592a0;
+    --accent: #92b5e6; --accent-soft: #1d2a3b; --line: #2a333e; --shadow: rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  button { font: inherit; color: inherit; }
+
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding-block: 22px 26px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  header { text-align: center; display: grid; gap: 6px; }
+  h1 {
+    margin: 0;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: .32em;
+    padding-left: .32em;
+    color: var(--accent);
+  }
+  .sub { margin: 0; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+
+  .stage {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: grid;
+    place-items: center;
+    perspective: 1400px;
+  }
+  .stage > * { grid-area: 1 / 1; }
+
+  .pile { width: var(--w); aspect-ratio: 5 / 8; max-width: 100%; position: relative; }
+  .pile::before, .pile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 6px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+  }
+  .pile::before { transform: rotate(-4deg) translate(-6px, 6px); opacity: .7; }
+  .pile::after { transform: rotate(2.5deg) translate(5px, 4px); opacity: .85; }
+  .pile[hidden] { display: none !important; }
+
+  .slot { width: var(--w); aspect-ratio: 5 / 8; max-width: 100%; }
+  .slot.out { opacity: 0; transform: translateY(-18px) scale(.97); transition: opacity .25s ease, transform .25s ease; }
+  .slot.deal { animation: deal .5s cubic-bezier(.2, .7, .2, 1); }
+  @keyframes deal {
+    from { opacity: 0; transform: translateY(30px) rotate(2deg); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .card {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    position: relative;
+    text-align: left;
+    transform-style: preserve-3d;
+    transition: transform .7s cubic-bezier(.2, .7, .2, 1);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card.flipped { transform: rotateY(180deg); }
+  .card.instant { transition: none; }
+  .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 8px; border-radius: 8px; }
+
+  .face {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border-radius: 6px;
+    padding: 26px 24px 22px;
+    display: flex;
+    flex-direction: column;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    box-shadow: 0 1px 2px var(--shadow), 0 18px 36px -18px var(--shadow);
+  }
+  .front { background: var(--paper); border: 1px solid var(--line); }
+  .back { background: var(--accent-soft); transform: rotateY(180deg); }
+
+  .tag {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    letter-spacing: .24em;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .back .tag { color: var(--accent); opacity: .75; }
+
+  .text {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(19px, 5.4vw, 23px);
+    line-height: 1.8;
+    letter-spacing: .04em;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .back .text { color: var(--accent); font-weight: 400; }
+
+  .hint { font-size: 12px; letter-spacing: .1em; color: var(--muted); }
+
+  /* 牌背：竖排的一句话，像书签 */
+  .cover {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 22px 0 16px;
+  }
+  .cover[hidden], .q[hidden] { display: none !important; }
+  .cover-title {
+    writing-mode: vertical-rl;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(24px, 7vw, 30px);
+    letter-spacing: .3em;
+    color: var(--accent);
+  }
+  .cover-foot { font-size: 11px; letter-spacing: .3em; color: var(--muted); }
+  .q { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  footer { display: grid; justify-items: center; gap: 10px; }
+  .btn {
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 40px;
+    background: var(--accent);
+    color: var(--paper);
+    font-size: 15px;
+    letter-spacing: .16em;
+    cursor: pointer;
+  }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .btn:active { transform: scale(.98); }
+  .count { margin: 0; font-size: 12px; color: var(--muted); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card, .slot.out { transition: none; }
+    .slot.deal { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>课题分离卡</h1>
+    <p class="sub">抽一张 · 想一想 · 翻过来带走一句</p>
+  </header>
+
+  <main class="stage">
+    <div class="pile" id="pile" aria-hidden="true"></div>
+    <div class="slot" id="slot">
+      <button class="card" id="card" type="button" aria-label="牌堆，点一下抽一张">
+        <div class="face front">
+          <div class="cover" id="cover">
+            <div class="cover-title">这是谁的课题</div>
+            <div class="cover-foot">点一下抽卡</div>
+          </div>
+          <div class="q" id="q" hidden>
+            <div class="tag"><span>问</span><span id="noFront"></span></div>
+            <div class="text" id="qText"></div>
+            <div class="hint">想好了，点卡片翻面</div>
+          </div>
+        </div>
+        <div class="face back">
+          <div class="tag"><span>带走</span><span id="noBack"></span></div>
+          <div class="text" id="aText"></div>
+          <div class="hint">点一下翻回去</div>
+        </div>
+      </button>
+    </div>
+  </main>
+
+  <footer>
+    <button class="btn" id="next" type="button">抽一张</button>
+    <p class="count" id="count"></p>
+  </footer>
+  <p class="sr" id="live" aria-live="polite"></p>
+</div>
+
+<script>
+  const CARDS = [
+    ["如果没有人认可，我还想做这件事吗？", "我做这件事，是因为我想，不是因为有人在看。"],
+    ["别人的失望，对我来说意味着什么？", "别人的失望是对方的期待落空，不是我的失败。"],
+    ["我现在做的，是我想做的，还是别人期待我做的？", "期待是别人出的题，答不答由我决定。"],
+    ["我害怕被讨厌，怕的是讨厌本身吗？", "别人的讨厌是对方心里的天气，不是我身上的污渍。"],
+    ["我对一个人好，是想对他好，还是想他也这样对我？", "不等回音的好，才是我送出去的礼物。"],
+    ["我不补位，后果会落在谁身上？", "我不再替别人收拾他们留下的窟窿。"],
+    ["对方站上道德高地时，我需要爬上去争吗？", "高地是对方搭的台子，事实是大家都踩着的地。"],
+    ["这件事搞砸了，最终是谁承担后果？", "谁承担后果，就是谁的课题。"],
+    ["我在等一个人改变，对方真的会变吗？", "我不再把我的心情，押在别人的改变上。"],
+    ["我反复想“对方怎么敢”，是在替谁做题？", "掂不掂量是对方的事，我回应过就够了。"],
+    ["我拒绝之后对方不高兴，那是谁的课题？", "我可以拒绝，对方可以不高兴，我们都没有错。"],
+    ["我在解释，是为了说清楚，还是为了被原谅？", "说清楚一次就够了，理不理解交给对方。"],
+    ["我生气，是想让对方怎样？", "我的火是我的，我不把它交到别人手里。"],
+    ["我一直不做决定，是在回避什么？", "不做决定也是一种决定，只是我不想承认。"],
+    ["我决定了却迟迟不做，是在保护什么？", "不开始就不会失败，可也什么都不会发生。"],
+    ["我拿自己跟别人比，是在找答案，还是在找安慰？", "比别人好，不等于够好。够不够好，只有我能定。"],
+    ["一句话扎到我，是因为它对，还是因为我也半信？", "扎到我的，往往是我自己也没放下的那句。"],
+    ["如果别人怎么看我都不重要了，我会做什么？", "我不必活在别人的眼睛里。"],
+    ["我在照顾别人的情绪，谁在照顾我的？", "别人的情绪由对方负责，我先顾好我自己。"],
+    ["对方说我不好，是在描述我，还是在描述自己？", "一个人怎么评价别人，暴露的常常是他自己。"],
+    ["我埋怨自己，这份埋怨在帮我做什么？", "不必为别人的毛病，再罚自己一遍。"],
+    ["我想证明自己，是要证明给谁看？", "我不需要向所有人交代我是谁。"],
+    ["我道歉，是因为我错了，还是因为气氛需要？", "我只为自己的错道歉，不为别人的不满买单。"],
+    ["被冒犯的那一刻，我能管住的是什么？", "我管不住别人的嘴，管得住我的回应。"],
+    ["这段关系让我累，我是在扛谁的那一份？", "我只扛属于我的那一半。"],
+    ["我想出一口气，出完之后谁来买单？", "痛快是一时的，账单是我的。"],
+    ["如果对方永远不理解我，我还要继续解释吗？", "被理解是礼物，不是我必须拿到的东西。"],
+    ["我替别人着急，对方自己急吗？", "别人的人生，我不替他焦虑。"],
+    ["我在讨好的那个人，真的在乎我做了什么吗？", "讨好换不来尊重，只会换来更多期待。"],
+    ["今天，我替谁做了题？", "把别人的题还回去，我才有力气写自己的。"]
+  ];
+
+  const KEY = "issue-cards-deck-v1";
+  const $ = (id) => document.getElementById(id);
+  const card = $("card"), slot = $("slot"), pile = $("pile"), btn = $("next"), count = $("count"), live = $("live");
+  const cover = $("cover"), q = $("q");
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function shuffle(n) {
+    const a = Array.from({ length: n }, (_, i) => i);
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  let deck = null;
+  try { deck = JSON.parse(localStorage.getItem(KEY)); } catch (e) { deck = null; }
+  const valid = Array.isArray(deck) && deck.length > 0 &&
+    deck.every((x) => Number.isInteger(x) && x >= 0 && x < CARDS.length);
+  if (!valid) deck = shuffle(CARDS.length);
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(deck)); } catch (e) {}
+  }
+
+  let state = "cover";
+  let busy = false;
+  let note = "";
+
+  function fill(id) {
+    const [qs, as] = CARDS[id];
+    const no = "No." + String(id + 1).padStart(2, "0");
+    $("qText").textContent = qs;
+    $("aText").textContent = as;
+    $("noFront").textContent = no;
+    $("noBack").textContent = no;
+    cover.hidden = true;
+    q.hidden = false;
+  }
+
+  function updateUI() {
+    btn.textContent = state === "cover" ? "抽一张" : "再抽一张";
+    count.textContent = note || ("这一轮还剩 " + deck.length + " 张");
+    pile.hidden = deck.length === 0;
+    if (state === "cover") card.setAttribute("aria-label", "牌堆，点一下抽一张");
+    else if (state === "q") card.setAttribute("aria-label", "问：" + $("qText").textContent + "。点一下翻面");
+    else card.setAttribute("aria-label", "带走：" + $("aText").textContent + "。点一下翻回去");
+  }
+
+  function draw() {
+    if (busy) return;
+    note = "";
+    if (deck.length === 0) {
+      deck = shuffle(CARDS.length);
+      note = "30 张都抽完了，已经重新洗牌";
+    }
+    const id = deck.pop();
+    save();
+    busy = true;
+    const go = () => {
+      card.classList.add("instant");
+      card.classList.remove("flipped");
+      void card.offsetWidth;
+      card.classList.remove("instant");
+      fill(id);
+      state = "q";
+      slot.classList.remove("out", "deal");
+      void slot.offsetWidth;
+      if (!reduce) slot.classList.add("deal");
+      updateUI();
+      live.textContent = "问：" + CARDS[id][0];
+      busy = false;
+    };
+    if (reduce || state === "cover") {
+      if (state === "cover" && !reduce) { slot.classList.add("out"); setTimeout(go, 220); }
+      else go();
+    } else {
+      slot.classList.add("out");
+      setTimeout(go, 260);
+    }
+  }
+
+  function flip() {
+    if (busy) return;
+    if (state === "q") {
+      card.classList.add("flipped");
+      state = "a";
+      live.textContent = "带走：" + $("aText").textContent;
+    } else if (state === "a") {
+      card.classList.remove("flipped");
+      state = "q";
+      live.textContent = "问：" + $("qText").textContent;
+    }
+    updateUI();
+  }
+
+  card.addEventListener("click", () => (state === "cover" ? draw() : flip()));
+  btn.addEventListener("click", draw);
+  updateUI();
+</script>
+
+</body>
+</html>
