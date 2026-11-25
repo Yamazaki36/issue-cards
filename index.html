@@ -26,6 +26,12 @@
     --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
     --w: min(76vw, 300px, calc((100vh - 290px) * .625));
   }
+  /* iPhone Safari 的 100vh 会把工具栏后面的区域也算进去，卡片会偏大、压住底部按钮；改用可见区域高度 svh */
+  @supports (height: 100svh) {
+    :root {
+      --w: min(76vw, 300px, calc((100svh - 300px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * .625));
+    }
+  }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #11161c; --paper: #1a2129; --ink: #e2e7eb; --muted: #8592a0;
@@ -185,7 +191,7 @@
   .cover-foot { font-size: 11px; letter-spacing: .3em; color: var(--muted); }
   .q { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-  footer { display: grid; justify-items: center; gap: 10px; }
+  footer { display: grid; justify-items: center; gap: 10px; position: relative; z-index: 2; }
   .btn {
     border: 0;
     border-radius: 999px;
