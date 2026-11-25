@@ -24,7 +24,7 @@
     --shadow: rgba(32, 52, 82, .22);
     --serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
     --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
-    --w: min(76vw, 300px, calc((100vh - 250px) * .625));
+    --w: min(76vw, 300px, calc((100vh - 290px) * .625));
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -199,6 +199,22 @@
   .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .btn:active { transform: scale(.98); }
   .count { margin: 0; font-size: 12px; color: var(--muted); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+  .tools { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; min-height: 24px; }
+  .tools[hidden], .link[hidden] { display: none !important; }
+  .link {
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--line);
+    cursor: pointer;
+  }
+  .link.accent { color: var(--accent); text-decoration-color: currentColor; }
+  .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -243,7 +259,11 @@
 
   <footer>
     <button class="btn" id="next" type="button">抽一张</button>
-    <p class="count" id="count"></p>
+    <p class="count"><span id="count"></span> <button class="link accent" id="undo" type="button" hidden>撤销</button></p>
+    <div class="tools" id="tools">
+      <button class="link" id="skip" type="button" hidden>不想再抽到这张</button>
+      <button class="link" id="restore" type="button" hidden></button>
+    </div>
   </footer>
   <p class="sr" id="live" aria-live="polite"></p>
 </div>
@@ -322,14 +342,18 @@
     ["这件事，我还撑得住吗？", "胜利属于意志最坚韧之人。", "罗兰·加洛斯 · 法网中央球场"]
   ];
 
+  // 卡片编号就是数组下标：以后加卡只能往末尾追加，不要删改顺序，否则"不想再抽到"的记录会对错卡
   const KEY = "issue-cards-deck-v3";
+  const HIDDEN_KEY = "issue-cards-hidden-v1";
   const $ = (id) => document.getElementById(id);
   const card = $("card"), slot = $("slot"), pile = $("pile"), btn = $("next"), count = $("count"), live = $("live");
   const cover = $("cover"), q = $("q");
+  const skipBtn = $("skip"), undoBtn = $("undo"), restoreBtn = $("restore");
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isId = (x) => Number.isInteger(x) && x >= 0 && x < CARDS.length;
 
-  function shuffle(n) {
-    const a = Array.from({ length: n }, (_, i) => i);
+  function shuffle(arr) {
+    const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
@@ -337,19 +361,34 @@
     return a;
   }
 
+  let hiddenIds = new Set();
+  try {
+    const h = JSON.parse(localStorage.getItem(HIDDEN_KEY));
+    if (Array.isArray(h)) hiddenIds = new Set(h.filter(isId));
+  } catch (e) {}
+
+  const available = () => CARDS.map((_, i) => i).filter((i) => !hiddenIds.has(i));
+  const insertRandom = (id) => deck.splice(Math.floor(Math.random() * (deck.length + 1)), 0, id);
+
   let deck = null;
   try { deck = JSON.parse(localStorage.getItem(KEY)); } catch (e) { deck = null; }
-  const valid = Array.isArray(deck) && deck.length > 0 &&
-    deck.every((x) => Number.isInteger(x) && x >= 0 && x < CARDS.length);
-  if (!valid) deck = shuffle(CARDS.length);
+  if (Array.isArray(deck)) deck = deck.filter((x) => isId(x) && !hiddenIds.has(x));
+  if (!Array.isArray(deck) || deck.length === 0) deck = shuffle(available());
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(deck)); } catch (e) {}
+  }
+  function saveHidden() {
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hiddenIds])); } catch (e) {}
   }
 
   let state = "cover";
   let busy = false;
   let note = "";
+  let current = null;
+  let undoId = null;
+  let restoreArmed = false;
+  let restoreTimer = null;
 
   function fill(id) {
     const [qs, as, src] = CARDS[id];
@@ -364,21 +403,44 @@
     q.hidden = false;
   }
 
+  function showCover() {
+    card.classList.add("instant");
+    card.classList.remove("flipped");
+    void card.offsetWidth;
+    card.classList.remove("instant");
+    cover.hidden = false;
+    q.hidden = true;
+    state = "cover";
+    current = null;
+  }
+
   function updateUI() {
     btn.textContent = state === "cover" ? "抽一张" : "再抽一张";
     count.textContent = note || ("这一轮还剩 " + deck.length + " 张");
     pile.hidden = deck.length === 0;
+    undoBtn.hidden = undoId === null;
+    skipBtn.hidden = state === "cover";
+    restoreBtn.hidden = hiddenIds.size === 0;
+    if (!restoreArmed) restoreBtn.textContent = "已移出 " + hiddenIds.size + " 张 · 全部恢复";
     if (state === "cover") card.setAttribute("aria-label", "牌堆，点一下抽一张");
     else if (state === "q") card.setAttribute("aria-label", "问：" + $("qText").textContent + "。点一下翻面");
     else card.setAttribute("aria-label", "带走：" + $("aText").textContent + "。点一下翻回去");
   }
 
-  function draw() {
+  function draw(msg, keepUndo) {
     if (busy) return;
-    note = "";
+    note = msg || "";
+    if (!keepUndo) undoId = null;
     if (deck.length === 0) {
-      deck = shuffle(CARDS.length);
-      note = CARDS.length + " 张都抽完了，已经重新洗牌";
+      const pool = available();
+      if (pool.length === 0) {
+        showCover();
+        note = "所有的卡都被移出了，点下面恢复";
+        updateUI();
+        return;
+      }
+      deck = shuffle(pool);
+      if (!msg) note = pool.length + " 张都抽完了，已经重新洗牌";
     }
     const id = deck.pop();
     save();
@@ -389,6 +451,7 @@
       void card.offsetWidth;
       card.classList.remove("instant");
       fill(id);
+      current = id;
       state = "q";
       slot.classList.remove("out", "deal");
       void slot.offsetWidth;
@@ -420,8 +483,53 @@
     updateUI();
   }
 
+  function skip() {
+    if (busy || current === null) return;
+    const id = current;
+    hiddenIds.add(id);
+    saveHidden();
+    deck = deck.filter((x) => x !== id);
+    save();
+    undoId = id;
+    draw("已移出这张，以后不会再抽到", true);
+  }
+
+  function undo() {
+    if (undoId === null) return;
+    hiddenIds.delete(undoId);
+    saveHidden();
+    insertRandom(undoId);
+    save();
+    undoId = null;
+    note = "已撤销，那张卡放回牌堆了";
+    updateUI();
+  }
+
+  function restoreAll() {
+    if (!restoreArmed) {
+      restoreArmed = true;
+      restoreBtn.textContent = "再点一次，恢复全部 " + hiddenIds.size + " 张";
+      clearTimeout(restoreTimer);
+      restoreTimer = setTimeout(() => { restoreArmed = false; updateUI(); }, 4000);
+      return;
+    }
+    clearTimeout(restoreTimer);
+    restoreArmed = false;
+    const back = [...hiddenIds];
+    hiddenIds.clear();
+    saveHidden();
+    back.forEach(insertRandom);
+    save();
+    undoId = null;
+    note = "已恢复 " + back.length + " 张，放回牌堆了";
+    updateUI();
+  }
+
   card.addEventListener("click", () => (state === "cover" ? draw() : flip()));
-  btn.addEventListener("click", draw);
+  btn.addEventListener("click", () => draw());
+  skipBtn.addEventListener("click", skip);
+  undoBtn.addEventListener("click", undo);
+  restoreBtn.addEventListener("click", restoreAll);
   updateUI();
 </script>
 
