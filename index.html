@@ -517,6 +517,16 @@
     decks[g.key] = d;
   });
 
+  // 新加的卡直接插进手机上现有的牌堆，不用等这一轮抽完（100 是记这个数之前已有的张数）
+  const KNOWN_KEY = "issue-cards-known-v1";
+  let known = 100;
+  try { const k = parseInt(localStorage.getItem(KNOWN_KEY), 10); if (k > 0) known = k; } catch (e) {}
+  if (CARDS.length > known) {
+    for (let id = known; id < CARDS.length; id++) if (!hiddenIds.has(id)) insertRandom(id);
+    save();
+  }
+  try { localStorage.setItem(KNOWN_KEY, String(CARDS.length)); } catch (e) {}
+
   let cur = "all";
   try {
     const k = localStorage.getItem(GROUP_KEY);
